@@ -1,0 +1,69 @@
+---
+name: Experimental Bazel
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop, 2.1.x]
+
+permissions: read-all
+
+jobs:
+  unit-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO(aaronmondal): Fix macos-13 and windows-2022.
+        os: [ubuntu-22.04]
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    steps:
+
+      - name: Checkout
+        uses: >- # v4.1.1
+          actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+
+      - name: Setup Bazelisk
+        uses: >- # Custom commit at 2023-10-23
+          bazelbuild/setup-bazelisk@5bc144ec07bd24eaa9b5c3e8c9af4006b033b629
+
+      - name: Determine Bazel cache mountpoint
+        id: bazel-cache
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ] || [ "$RUNNER_OS" == "macOS" ]; then
+            echo "mountpoint=~/.cache/bazel" >> "$GITHUB_OUTPUT"
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            echo "mountpoint=C:/tmp" >> "$GITHUB_OUTPUT"
+          else
+            echo "Unknown runner OS: $RUNNER_OS"
+            exit 1
+          fi
+        shell: bash
+
+      - name: Mount bazel cache
+        uses: >- # v3.3.2
+          actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84
+        with:
+          path: |
+            ${{ steps.bazel-cache.outputs.mountpoint }}
+          key: |
+            ${{ matrix.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE.bzlmod', 'MODULE.bazel.lock') }}
+          restore-keys: |
+            ${{ matrix.os }}-bazel-native-
+
+      - name: Run Bazel build
+        run: |
+          if [ "$RUNNER_OS" == "Linux" ] || [ "$RUNNER_OS" == "macOS" ]; then
+            bazel build ... --verbose_failures
+          elif [ "$RUNNER_OS" == "Windows" ]; then
+            bazel \
+              --output_user_root=${{ steps.bazel-cache.outputs.mountpoint }} \
+              build \
+              ... \
+              --verbose_failures
+          else
+            echo "Unknown runner OS: $RUNNER_OS"
+            exit 1
+          fi
+        shell: bash
