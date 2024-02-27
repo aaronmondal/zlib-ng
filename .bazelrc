@@ -1,0 +1,2 @@
+# Faster hashing
+startup --digest_function=blake3
